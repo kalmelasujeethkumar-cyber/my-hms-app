@@ -4,7 +4,7 @@ exports.addAuditLog = exports.getAuditLogs = void 0;
 const AUDIT_LOGS = [
     {
         id: 'a1',
-        user: 'Dr. Prasad (HOD)',
+        user: 'Dr. B Vamsi Pavan (HOD)',
         role: 'Admin',
         action: 'LOGIN',
         timestamp: new Date().toISOString(),

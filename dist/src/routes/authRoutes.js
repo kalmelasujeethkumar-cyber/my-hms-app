@@ -5,4 +5,8 @@ const authController_1 = require("../controllers/authController");
 const router = (0, express_1.Router)();
 router.post('/login', authController_1.login);
 router.get('/me', authController_1.getMe);
+router.get('/users', authController_1.getUsers);
+router.post('/register-doctor', authController_1.registerDoctor);
+router.post('/register-doctors-batch', authController_1.registerDoctorsBatch);
+router.delete('/delete-doctor/:username', authController_1.deleteDoctor);
 exports.default = router;

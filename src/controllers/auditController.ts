@@ -13,7 +13,7 @@ interface AuditLogEntry {
 const AUDIT_LOGS: AuditLogEntry[] = [
   {
     id: 'a1',
-    user: 'Dr. Prasad (HOD)',
+    user: 'Dr. B Vamsi Pavan (HOD)',
     role: 'Admin',
     action: 'LOGIN',
     timestamp: new Date().toISOString(),
