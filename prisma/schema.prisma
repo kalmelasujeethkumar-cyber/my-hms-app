@@ -1,0 +1,591 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum VisitType {
+  CLINIC
+  HOME
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+}
+
+// ---------------------------------------------------------
+// AUTHENTICATION & ACCESS CONTROL (1-6)
+// ---------------------------------------------------------
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  username       String    @unique
+  password_hash  String
+  is_active      Boolean   @default(true)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  role_id        String
+  role           Role      @relation(fields: [role_id], references: [id])
+
+  branch_id      String?
+  branch         Branch?   @relation(fields: [branch_id], references: [id])
+
+  // Profile Relations
+  doctor         Doctor?
+  receptionist   Receptionist?
+
+  // Auth/Session
+  sessions       Session[]
+  refresh_tokens RefreshToken[]
+
+  // Logs
+  audit_logs     AuditLog[]
+  activity_logs  ActivityLog[]
+  notifications  Notification[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // ADMIN, RECEPTION, DOCTOR
+  description String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  created_at  DateTime @default(now())
+
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  role_id       String
+  permission_id String
+
+  role          Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+}
+
+model Session {
+  id            String   @id @default(uuid())
+  user_id       String
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token         String   @unique
+  ip_address    String?
+  user_agent    String?
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+}
+
+model RefreshToken {
+  id            String   @id @default(uuid())
+  user_id       String
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token         String   @unique
+  is_revoked    Boolean  @default(false)
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+}
+
+// ---------------------------------------------------------
+// CLINIC STRUCTURE (7-8)
+// ---------------------------------------------------------
+
+model Branch {
+  id            String   @id @default(uuid())
+  name          String
+  address       String
+  phone         String?
+  email         String?
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  users         User[]
+  patients      Patient[]
+  appointments  Appointment[]
+  departments   Department[]
+}
+
+model Department {
+  id            String   @id @default(uuid())
+  name          String
+  branch_id     String
+  branch        Branch   @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  doctors       Doctor[]
+}
+
+// ---------------------------------------------------------
+// PROFILES (9-11)
+// ---------------------------------------------------------
+
+model Doctor {
+  id               String   @id @default(uuid())
+  user_id          String   @unique
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  department_id    String?
+  department       Department? @relation(fields: [department_id], references: [id])
+  specialization   String?
+  experience_years Int?
+  license_number   String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  appointments     Appointment[]
+  schedules        DoctorSchedule[]
+  attendances      Attendance[]
+  leave_requests   LeaveRequest[]
+  ratings          DoctorRating[]
+}
+
+model Receptionist {
+  id          String   @id @default(uuid())
+  user_id     String   @unique
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  shift       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model Patient {
+  id             String   @id @default(uuid())
+  patient_id     String   @unique // e.g. PAT-001
+  branch_id      String
+  branch         Branch   @relation(fields: [branch_id], references: [id])
+  first_name     String
+  last_name      String
+  phone          String   @unique
+  email          String?
+  dob            DateTime?
+  age            Int?
+  gender         Gender
+  address        String?
+  emergency_contact String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  appointments   Appointment[]
+  medical_history MedicalHistory[]
+  reports        Report[]
+  ct_scans       CTScan[]
+  mri_scans      MRIScan[]
+  blood_reports  BloodReport[]
+  xrays          XRay[]
+  documents      Document[]
+  patient_images PatientImage[]
+  payments       Payment[]
+
+  @@index([patient_id])
+  @@index([phone])
+}
+
+// ---------------------------------------------------------
+// APPOINTMENTS & VISITS (12-16)
+// ---------------------------------------------------------
+
+model Appointment {
+  id             String   @id @default(uuid())
+  appointment_id String   @unique // APP-001
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id])
+  doctor_id      String
+  doctor         Doctor   @relation(fields: [doctor_id], references: [id])
+  branch_id      String
+  branch         Branch   @relation(fields: [branch_id], references: [id])
+  
+  appointment_date DateTime
+  time_slot      String?
+  visit_type     VisitType
+  status         AppointmentStatus @default(PENDING)
+  notes          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  home_visit     HomeVisit?
+  visit_history  VisitHistory[]
+  visit_notes    VisitNote[]
+  diagnosis      Diagnosis[]
+  prescriptions  Prescription[]
+  exercise_plans ExercisePlan[]
+  payments       Payment[]
+}
+
+model HomeVisit {
+  id               String   @id @default(uuid())
+  appointment_id   String   @unique
+  appointment      Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+  visit_address    String
+  latitude         Float?
+  longitude        Float?
+  started_at       DateTime?
+  reached_at       DateTime?
+  completed_at     DateTime?
+  eta_minutes      Int?
+  distance_km      Float?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  gps_trackings    GPSTracking[]
+}
+
+model GPSTracking {
+  id               String   @id @default(uuid())
+  home_visit_id    String
+  home_visit       HomeVisit @relation(fields: [home_visit_id], references: [id], onDelete: Cascade)
+  latitude         Float
+  longitude        Float
+  speed_kmh        Float?
+  timestamp        DateTime @default(now())
+}
+
+model VisitHistory {
+  id               String   @id @default(uuid())
+  appointment_id   String
+  appointment      Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+  status_from      String
+  status_to        String
+  changed_by       String // User ID
+  notes            String?
+  created_at       DateTime @default(now())
+}
+
+model VisitNote {
+  id               String   @id @default(uuid())
+  appointment_id   String
+  appointment      Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+  note             String
+  created_by       String // User ID
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------
+// MEDICAL RECORDS (17-22)
+// ---------------------------------------------------------
+
+model MedicalHistory {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  condition      String
+  diagnosed_date DateTime?
+  notes          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+model Diagnosis {
+  id             String   @id @default(uuid())
+  appointment_id String
+  appointment    Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+  icd_code       String?
+  description    String
+  severity       String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+model Prescription {
+  id             String   @id @default(uuid())
+  appointment_id String
+  appointment    Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+  notes          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  items          PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id              String   @id @default(uuid())
+  prescription_id String
+  prescription    Prescription @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  medication_id   String
+  medication      Medication @relation(fields: [medication_id], references: [id])
+  dosage          String
+  frequency       String
+  duration_days   Int
+  instructions    String?
+}
+
+model Medication {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  brand       String?
+  type        String?  // Tablet, Syrup, Ointment
+  created_at  DateTime @default(now())
+  
+  prescription_items PrescriptionItem[]
+}
+
+model ExercisePlan {
+  id             String   @id @default(uuid())
+  appointment_id String
+  appointment    Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+  title          String
+  instructions   String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  items          ExerciseItem[]
+}
+
+model ExerciseItem {
+  id               String   @id @default(uuid())
+  exercise_plan_id String
+  exercise_plan    ExercisePlan @relation(fields: [exercise_plan_id], references: [id], onDelete: Cascade)
+  exercise_name    String
+  sets             Int
+  reps             Int
+  duration_mins    Int?
+  video_url        String?
+}
+
+// ---------------------------------------------------------
+// FILE MANAGEMENT & REPORTS (23-29)
+// ---------------------------------------------------------
+
+model Report {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  title          String
+  file_url       String
+  file_size_kb   Int?
+  uploaded_by    String // User ID
+  created_at     DateTime @default(now())
+}
+
+model CTScan {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  file_url       String
+  scan_date      DateTime
+  notes          String?
+  created_at     DateTime @default(now())
+}
+
+model MRIScan {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  file_url       String
+  scan_date      DateTime
+  notes          String?
+  created_at     DateTime @default(now())
+}
+
+model BloodReport {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  file_url       String
+  test_date      DateTime
+  notes          String?
+  created_at     DateTime @default(now())
+}
+
+model XRay {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  file_url       String
+  body_part      String
+  xray_date      DateTime
+  created_at     DateTime @default(now())
+}
+
+model Document {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  title          String
+  file_url       String
+  document_type  String // ID_PROOF, CONSENT_FORM, etc.
+  created_at     DateTime @default(now())
+}
+
+model PatientImage {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  image_url      String
+  image_type     String // BEFORE, AFTER, PROGRESS
+  description    String?
+  created_at     DateTime @default(now())
+}
+
+// ---------------------------------------------------------
+// HR & SCHEDULE (30-33)
+// ---------------------------------------------------------
+
+model DoctorSchedule {
+  id             String   @id @default(uuid())
+  doctor_id      String
+  doctor         Doctor   @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
+  day_of_week    Int      // 0 = Sunday, 1 = Monday
+  start_time     String   // e.g. "09:00"
+  end_time       String   // e.g. "17:00"
+  is_available   Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+model Attendance {
+  id             String   @id @default(uuid())
+  doctor_id      String
+  doctor         Doctor   @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
+  date           DateTime
+  status         String   // PRESENT, ABSENT, HALF_DAY
+  check_in       DateTime?
+  check_out      DateTime?
+  created_at     DateTime @default(now())
+}
+
+model LeaveRequest {
+  id             String   @id @default(uuid())
+  doctor_id      String
+  doctor         Doctor   @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
+  start_date     DateTime
+  end_date       DateTime
+  reason         String
+  status         String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+model DoctorRating {
+  id             String   @id @default(uuid())
+  doctor_id      String
+  doctor         Doctor   @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
+  rating         Int      // 1 to 5
+  review         String?
+  patient_id     String
+  created_at     DateTime @default(now())
+}
+
+// ---------------------------------------------------------
+// BILLING (34-35)
+// ---------------------------------------------------------
+
+model Payment {
+  id             String   @id @default(uuid())
+  patient_id     String
+  patient        Patient  @relation(fields: [patient_id], references: [id])
+  appointment_id String?
+  appointment    Appointment? @relation(fields: [appointment_id], references: [id])
+  amount         Float
+  status         PaymentStatus @default(PENDING)
+  method         PaymentMethod?
+  transaction_id String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  receipts       Receipt[]
+}
+
+model Receipt {
+  id             String   @id @default(uuid())
+  receipt_number String   @unique // REC-001
+  payment_id     String
+  payment        Payment  @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  file_url       String?
+  issued_at      DateTime @default(now())
+}
+
+// ---------------------------------------------------------
+// SYSTEM & LOGGING (36-39)
+// ---------------------------------------------------------
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  user_id        String?
+  user           User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  action         String
+  entity_type    String?  // PATIENT, APPOINTMENT, etc
+  entity_id      String?
+  ip_address     String?
+  user_agent     String?
+  location       String?
+  details        Json?
+  created_at     DateTime @default(now())
+
+  @@index([user_id])
+  @@index([created_at])
+}
+
+model ActivityLog {
+  id             String   @id @default(uuid())
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  action         String
+  description    String
+  created_at     DateTime @default(now())
+}
+
+model Notification {
+  id             String   @id @default(uuid())
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  title          String
+  message        String
+  is_read        Boolean  @default(false)
+  type           String   // SYSTEM, APPOINTMENT, MESSAGE
+  created_at     DateTime @default(now())
+}
+
+model Setting {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  value          String
+  description    String?
+  updated_at     DateTime @updatedAt
+}
