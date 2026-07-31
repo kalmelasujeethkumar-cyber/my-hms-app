@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const doctorController_1 = require("../controllers/doctorController");
+const router = (0, express_1.Router)();
+router.get('/stats', doctorController_1.getDoctorStats);
+router.post('/sessions/notes', doctorController_1.saveSessionNote);
+router.post('/reports/upload', doctorController_1.uploadReport);
+router.post('/gps', doctorController_1.postGPSLocation);
+router.get('/gps', doctorController_1.getGPSHistory);
+exports.default = router;
